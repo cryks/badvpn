@@ -367,11 +367,6 @@ fail0:
             
             #ifdef BADVPN_FREEBSD
             
-            if (init_data.dev_type == BTAP_DEV_TUN) {
-                BLog(BLOG_ERROR, "TUN not supported on FreeBSD");
-                goto fail0;
-            }
-            
             if (!init_data.init.string) {
                 BLog(BLOG_ERROR, "no device specified");
                 goto fail0;
@@ -391,7 +386,7 @@ fail0:
             
             struct ifreq ifr;
             memset(&ifr, 0, sizeof(ifr));
-            if (ioctl(o->fd, TAPGIFNAME, (void *)&ifr) < 0) {
+            if (ioctl(o->fd, TUNSIFHEAD, (void *)&ifr) < 0) {
                 BLog(BLOG_ERROR, "error configuring device");
                 goto fail1;
             }
@@ -402,29 +397,24 @@ fail0:
             
             // get MTU
             
-            // open dummy socket for ioctls
-            int sock = socket(AF_INET, SOCK_DGRAM, 0);
-            if (sock < 0) {
-                BLog(BLOG_ERROR, "socket failed");
-                goto fail1;
-            }
-            
-            memset(&ifr, 0, sizeof(ifr));
-            strcpy(ifr.ifr_name, devname_real);
-            
-            if (ioctl(sock, SIOCGIFMTU, (void *)&ifr) < 0) {
-                BLog(BLOG_ERROR, "error getting MTU");
-                close(sock);
-                goto fail1;
-            }
-            
             if (init_data.dev_type == BTAP_DEV_TUN) {
-                o->frame_mtu = ifr.ifr_mtu;
+                struct tuninfo tinfo;
+                memset(&tinfo, 0, sizeof(tinfo));
+                if (ioctl(o->fd, TUNGIFINFO, (void *)&tinfo) < 0) {
+                    BLog(BLOG_ERROR, "error getting MTU (tun)");
+                    goto fail1;
+                }
+                o->frame_mtu = tinfo.mtu;
             } else {
-                o->frame_mtu = ifr.ifr_mtu + BTAP_ETHERNET_HEADER_LENGTH;
+                struct tapinfo tinfo;
+                memset(&tinfo, 0, sizeof(tinfo));
+                if (ioctl(o->fd, TAPGIFINFO, (void *)&tinfo) < 0) {
+                    BLog(BLOG_ERROR, "error getting MTU (tap)");
+                    goto fail1;
+                }
+                o->frame_mtu = tinfo.mtu + BTAP_ETHERNET_HEADER_LENGTH;
             }
             
-            close(sock);
         } break;
         
         default: ASSERT(0);
